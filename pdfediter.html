@@ -1,0 +1,1032 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Redline — PDF Editor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;1,9..144,500&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+<style>
+  :root{
+    --ink:#14171f;
+    --paper:#eceae2;
+    --panel:#ffffff;
+    --redline:#c8362c;
+    --redline-dim:#e3b2ac;
+    --graphite:#6b6f76;
+    --line:#d7d3c7;
+    --line-strong:#b9b4a4;
+    --sidebar-w:64px;
+    --thumbs-w:150px;
+    --props-w:230px;
+  }
+  *{box-sizing:border-box;}
+  html,body{height:100%;margin:0;}
+  body{
+    font-family:'Inter',sans-serif;
+    background:var(--paper);
+    color:var(--ink);
+    display:flex;
+    flex-direction:column;
+    height:100vh;
+    overflow:hidden;
+  }
+  ::selection{ background:var(--redline-dim); }
+
+  /* ---------- Top bar ---------- */
+  #topbar{
+    height:56px;
+    flex:none;
+    display:flex;
+    align-items:center;
+    gap:18px;
+    padding:0 18px;
+    background:var(--panel);
+    border-bottom:1px solid var(--line);
+    z-index:20;
+  }
+  #brand{
+    font-family:'Fraunces',serif;
+    font-weight:600;
+    font-size:20px;
+    letter-spacing:-0.01em;
+    display:flex;
+    align-items:baseline;
+    gap:6px;
+  }
+  #brand .dot{ color:var(--redline); font-size:22px; line-height:0; }
+  #topbar .sep{ width:1px; height:26px; background:var(--line); }
+  .tb-btn{
+    font-family:'Inter',sans-serif;
+    font-size:13px;
+    font-weight:600;
+    color:var(--ink);
+    background:transparent;
+    border:1px solid var(--line-strong);
+    border-radius:6px;
+    padding:7px 13px;
+    cursor:pointer;
+    display:flex;
+    align-items:center;
+    gap:7px;
+    transition:border-color .12s, background .12s;
+  }
+  .tb-btn:hover{ border-color:var(--ink); background:#f6f4ee; }
+  .tb-btn.primary{
+    background:var(--ink);
+    color:#fff;
+    border-color:var(--ink);
+  }
+  .tb-btn.primary:hover{ background:#000; }
+  .tb-btn:disabled{ opacity:.35; cursor:not-allowed; }
+  .tb-btn:disabled:hover{ background:transparent; border-color:var(--line-strong); }
+  #filename{
+    font-family:'JetBrains Mono',monospace;
+    font-size:12px;
+    color:var(--graphite);
+    max-width:220px;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    white-space:nowrap;
+  }
+  #topbar-spacer{ flex:1; }
+  #zoomctl{ display:flex; align-items:center; gap:6px; font-family:'JetBrains Mono',monospace; font-size:12px; color:var(--graphite); }
+  #zoomctl button{
+    width:26px;height:26px;border-radius:5px;border:1px solid var(--line-strong);
+    background:#fff;cursor:pointer;font-size:14px;line-height:1;color:var(--ink);
+  }
+  #zoomctl button:hover{ border-color:var(--ink); }
+  #zoomlabel{ width:44px; text-align:center; }
+
+  /* ---------- Body layout ---------- */
+  #body{ flex:1; display:flex; min-height:0; }
+
+  /* Tool rail */
+  #rail{
+    width:var(--sidebar-w);
+    flex:none;
+    background:var(--panel);
+    border-right:1px solid var(--line);
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    padding:14px 0;
+    gap:6px;
+  }
+  .tool{
+    width:42px;height:42px;
+    border-radius:9px;
+    border:1px solid transparent;
+    background:transparent;
+    display:flex;align-items:center;justify-content:center;
+    cursor:pointer;
+    color:var(--ink);
+    position:relative;
+  }
+  .tool svg{ width:19px; height:19px; }
+  .tool:hover{ background:#f6f4ee; }
+  .tool.active{ background:var(--ink); color:#fff; }
+  .tool .tag{
+    position:absolute; left:52px; top:50%; transform:translateY(-50%);
+    background:var(--ink); color:#fff; font-family:'JetBrains Mono',monospace;
+    font-size:10.5px; padding:4px 7px; border-radius:4px; white-space:nowrap;
+    opacity:0; pointer-events:none; transition:opacity .1s;
+    z-index:50;
+  }
+  .tool:hover .tag{ opacity:1; }
+  #rail .rail-sep{ width:26px; height:1px; background:var(--line); margin:6px 0; }
+
+  /* Thumbnails */
+  #thumbs{
+    width:var(--thumbs-w);
+    flex:none;
+    background:#f3f1ea;
+    border-right:1px solid var(--line);
+    overflow-y:auto;
+    padding:14px 10px;
+  }
+  #thumbs .thumbs-title{
+    font-family:'JetBrains Mono',monospace;
+    font-size:10.5px; letter-spacing:.06em; text-transform:uppercase;
+    color:var(--graphite); margin:0 2px 10px;
+  }
+  .thumb{
+    margin-bottom:12px;
+    cursor:pointer;
+    position:relative;
+  }
+  .thumb .thumb-canvas-wrap{
+    border:2px solid transparent;
+    border-radius:3px;
+    overflow:hidden;
+    background:#fff;
+    box-shadow:0 1px 3px rgba(0,0,0,.12);
+  }
+  .thumb.active .thumb-canvas-wrap{ border-color:var(--redline); }
+  .thumb canvas{ display:block; width:100%; height:auto; }
+  .thumb .thumb-meta{
+    display:flex; align-items:center; justify-content:space-between;
+    margin-top:5px;
+  }
+  .thumb .thumb-num{ font-family:'JetBrains Mono',monospace; font-size:10.5px; color:var(--graphite); }
+  .thumb .thumb-actions{ display:flex; gap:3px; opacity:0; transition:opacity .12s; }
+  .thumb:hover .thumb-actions{ opacity:1; }
+  .thumb-actions button{
+    width:18px;height:18px; border:none; background:transparent; cursor:pointer;
+    color:var(--graphite); display:flex; align-items:center; justify-content:center; border-radius:3px;
+  }
+  .thumb-actions button:hover{ background:var(--line); color:var(--ink); }
+  .thumb-actions svg{ width:11px; height:11px; }
+  #addpage-btn{
+    width:100%; border:1.5px dashed var(--line-strong); border-radius:5px;
+    background:transparent; padding:9px 0; cursor:pointer;
+    font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--graphite);
+    margin-top:2px;
+  }
+  #addpage-btn:hover{ border-color:var(--redline); color:var(--redline); }
+
+  /* Canvas stage */
+  #stage{
+    flex:1;
+    overflow:auto;
+    background:var(--paper);
+    display:flex;
+    align-items:flex-start;
+    justify-content:center;
+    padding:40px 40px 80px;
+    position:relative;
+  }
+  #stage.empty{ align-items:center; }
+  #dropzone{
+    width:520px; max-width:90%;
+    border:1.5px dashed var(--line-strong);
+    border-radius:10px;
+    padding:60px 30px;
+    text-align:center;
+    background:var(--panel);
+  }
+  #dropzone h1{
+    font-family:'Fraunces',serif; font-weight:600; font-size:26px; margin:0 0 8px;
+  }
+  #dropzone p{ color:var(--graphite); font-size:14px; margin:0 0 22px; line-height:1.5; }
+  #dropzone .accent{ color:var(--redline); }
+
+  #pagewrap{
+    position:relative;
+    background:#fff;
+    box-shadow:0 2px 5px rgba(20,23,31,.08), 0 12px 30px rgba(20,23,31,.10);
+  }
+  #pagewrap canvas{ display:block; }
+  #base-canvas{ position:relative; z-index:1; }
+  #anno-canvas{ position:absolute; top:0; left:0; z-index:2; touch-action:none; }
+  #text-editor{
+    position:absolute; z-index:3;
+    background:transparent;
+    border:1px dashed var(--redline);
+    outline:none;
+    resize:none;
+    overflow:hidden;
+    font-family:'Inter',sans-serif;
+    padding:0; margin:0;
+    line-height:1.25;
+    white-space:pre;
+  }
+
+  /* Properties panel */
+  #props{
+    width:var(--props-w);
+    flex:none;
+    background:var(--panel);
+    border-left:1px solid var(--line);
+    padding:18px 16px;
+    overflow-y:auto;
+  }
+  #props h3{
+    font-family:'JetBrains Mono',monospace; font-size:10.5px; text-transform:uppercase;
+    letter-spacing:.06em; color:var(--graphite); margin:0 0 14px;
+  }
+  .field{ margin-bottom:14px; }
+  .field label{
+    display:block; font-size:11.5px; color:var(--graphite); margin-bottom:5px; font-weight:500;
+  }
+  .field input[type=text], .field input[type=number], .field textarea, .field select{
+    width:100%; border:1px solid var(--line-strong); border-radius:5px;
+    padding:6px 8px; font-family:'Inter',sans-serif; font-size:13px; background:#fdfcf9;
+  }
+  .field textarea{ resize:vertical; min-height:50px; }
+  .row2{ display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .swatches{ display:flex; gap:6px; flex-wrap:wrap; }
+  .swatch{
+    width:22px;height:22px;border-radius:50%;cursor:pointer;border:2px solid #fff;
+    box-shadow:0 0 0 1px var(--line-strong);
+  }
+  .swatch.active{ box-shadow:0 0 0 2px var(--ink); }
+  #props .empty-hint{ color:var(--graphite); font-size:13px; line-height:1.6; }
+  #props .empty-hint strong{ color:var(--ink); }
+  .del-btn{
+    width:100%; margin-top:6px; padding:8px 0; border-radius:6px; border:1px solid var(--redline);
+    background:#fff; color:var(--redline); font-weight:600; font-size:12.5px; cursor:pointer;
+  }
+  .del-btn:hover{ background:var(--redline); color:#fff; }
+
+  #hiddenfile{ display:none; }
+
+  /* scrollbars */
+  #thumbs::-webkit-scrollbar, #props::-webkit-scrollbar, #stage::-webkit-scrollbar{ width:9px; height:9px; }
+  #thumbs::-webkit-scrollbar-thumb, #props::-webkit-scrollbar-thumb, #stage::-webkit-scrollbar-thumb{
+    background:var(--line-strong); border-radius:5px;
+  }
+
+  #toast{
+    position:fixed; bottom:20px; left:50%; transform:translateX(-50%);
+    background:var(--ink); color:#fff; padding:10px 16px; border-radius:7px;
+    font-size:13px; opacity:0; pointer-events:none; transition:opacity .2s, transform .2s;
+    z-index:200;
+  }
+  #toast.show{ opacity:1; transform:translateX(-50%) translateY(-4px); }
+</style>
+</head>
+<body>
+
+<div id="topbar">
+  <div id="brand"><span class="dot">●</span>Redline</div>
+  <span id="filename"></span>
+  <div class="sep"></div>
+  <button class="tb-btn" id="open-btn">Open PDF</button>
+  <div class="sep"></div>
+  <button class="tb-btn" id="undo-btn" disabled>Undo</button>
+  <button class="tb-btn" id="redo-btn" disabled>Redo</button>
+  <div id="topbar-spacer"></div>
+  <div id="zoomctl">
+    <button id="zoom-out">−</button>
+    <span id="zoomlabel">100%</span>
+    <button id="zoom-in">+</button>
+  </div>
+  <div class="sep"></div>
+  <button class="tb-btn primary" id="export-btn" disabled>Export PDF</button>
+</div>
+
+<div id="body">
+  <div id="rail">
+    <button class="tool active" data-tool="select" title="Select">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 3l14 8-6 1.5L11 19z"/></svg>
+      <span class="tag">Select (V)</span>
+    </button>
+    <button class="tool" data-tool="text" title="Text">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 5h14M12 5v14"/></svg>
+      <span class="tag">Text (T)</span>
+    </button>
+    <button class="tool" data-tool="draw" title="Draw">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 20l3-.8L18 8.3a2 2 0 0 0 0-2.8l-1.5-1.5a2 2 0 0 0-2.8 0L2.8 15 2 20"/></svg>
+      <span class="tag">Draw (P)</span>
+    </button>
+    <button class="tool" data-tool="highlight" title="Highlight">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 20h16M6 15l9-9 3 3-9 9H6z"/></svg>
+      <span class="tag">Highlight (H)</span>
+    </button>
+    <button class="tool" data-tool="rect" title="Rectangle">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="6" width="16" height="12" rx="1"/></svg>
+      <span class="tag">Rectangle (R)</span>
+    </button>
+    <button class="tool" data-tool="image" title="Image">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="16" rx="1.5"/><circle cx="8.5" cy="9.5" r="1.5"/><path d="M21 16l-5-5-9 9"/></svg>
+      <span class="tag">Image (I)</span>
+    </button>
+    <div class="rail-sep"></div>
+    <button class="tool" id="delete-anno" title="Delete selected">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2m2 0-1 13a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1L6 7"/></svg>
+      <span class="tag">Delete (Del)</span>
+    </button>
+  </div>
+
+  <div id="thumbs" style="display:none;">
+    <div class="thumbs-title">Pages</div>
+    <div id="thumbs-list"></div>
+    <button id="addpage-btn">+ Add blank page</button>
+  </div>
+
+  <div id="stage" class="empty">
+    <div id="dropzone">
+      <h1>Mark it <span class="accent">up.</span></h1>
+      <p>Open a PDF to add text, drawings, highlights, and images — then export a new copy. Everything happens locally in your browser; nothing is uploaded anywhere.</p>
+      <button class="tb-btn primary" id="dropzone-open">Open a PDF</button>
+    </div>
+  </div>
+
+  <div id="props">
+    <div class="empty-hint" id="props-empty">
+      Select an annotation to edit its properties, or choose a tool from the left rail to start marking up the page.
+    </div>
+  </div>
+</div>
+
+<input type="file" id="hiddenfile" accept="application/pdf" />
+<input type="file" id="hiddenimage" accept="image/*" />
+<div id="toast"></div>
+
+<script>
+pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js";
+
+/* ============================= STATE ============================= */
+const COLORS = ["#c8362c","#14171f","#1d4ed8","#0f9d58","#e8a33d","#8b5cf6"];
+let pdfDoc = null;            // pdf.js document (for rendering)
+let sourceBytes = null;       // ArrayBuffer of the originally opened file
+let originalFilename = "document.pdf";
+let pagesOrder = [];          // [{id, kind:'orig'|'blank', num, w, h, annotations:[]}]
+let currentIndex = 0;
+let scale = 1.3;
+let currentTool = "select";
+let selectedId = null;
+let idCounter = 1;
+let pendingImageDataUrl = null;
+
+let history = [];             // undo stack of JSON snapshots
+let future = [];              // redo stack
+const MAX_HISTORY = 60;
+
+/* drawing/dragging interaction state */
+let interaction = null;
+
+/* ============================= DOM ============================= */
+const $ = (s)=>document.querySelector(s);
+const stage = $("#stage");
+const thumbsWrap = $("#thumbs");
+const thumbsList = $("#thumbs-list");
+const propsPanel = $("#props");
+const filenameEl = $("#filename");
+const zoomLabel = $("#zoomlabel");
+const toast = $("#toast");
+
+function showToast(msg){
+  toast.textContent = msg;
+  toast.classList.add("show");
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(()=>toast.classList.remove("show"), 2200);
+}
+
+/* ============================= FILE OPEN ============================= */
+$("#open-btn").onclick = ()=>$("#hiddenfile").click();
+$("#dropzone-open").onclick = ()=>$("#hiddenfile").click();
+$("#hiddenfile").onchange = (e)=>{
+  const f = e.target.files[0];
+  if(f) loadFile(f);
+  e.target.value = "";
+};
+stage.addEventListener("dragover", (e)=>{ e.preventDefault(); });
+stage.addEventListener("drop", (e)=>{
+  e.preventDefault();
+  const f = e.dataTransfer.files[0];
+  if(f && f.type === "application/pdf") loadFile(f);
+});
+
+async function loadFile(file){
+  originalFilename = file.name;
+  filenameEl.textContent = file.name;
+  sourceBytes = await file.arrayBuffer();
+  const loadingTask = pdfjsLib.getDocument({ data: sourceBytes.slice(0) });
+  pdfDoc = await loadingTask.load ? null : await loadingTask.promise;
+
+  pagesOrder = [];
+  idCounter = 1;
+  for(let i=1;i<=pdfDoc.numPages;i++){
+    const page = await pdfDoc.getPage(i);
+    const vp = page.getViewport({scale:1});
+    pagesOrder.push({ id:"p"+(idCounter++), kind:"orig", num:i, w:vp.width, h:vp.height, annotations:[] });
+  }
+  currentIndex = 0;
+  history = []; future = [];
+  updateUndoRedoButtons();
+
+  stage.classList.remove("empty");
+  thumbsWrap.style.display = "block";
+  $("#export-btn").disabled = false;
+
+  await renderThumbs();
+  await renderCurrentPage();
+  showToast("PDF loaded — pick a tool to start marking up.");
+}
+
+/* ============================= UNDO / REDO ============================= */
+function snapshot(){
+  return JSON.stringify(pagesOrder);
+}
+function pushHistory(){
+  history.push(snapshot());
+  if(history.length > MAX_HISTORY) history.shift();
+  future = [];
+  updateUndoRedoButtons();
+}
+function updateUndoRedoButtons(){
+  $("#undo-btn").disabled = history.length === 0;
+  $("#redo-btn").disabled = future.length === 0;
+}
+$("#undo-btn").onclick = async ()=>{
+  if(!history.length) return;
+  future.push(snapshot());
+  pagesOrder = JSON.parse(history.pop());
+  selectedId = null;
+  updateUndoRedoButtons();
+  await renderThumbs();
+  await renderCurrentPage();
+  renderProps();
+};
+$("#redo-btn").onclick = async ()=>{
+  if(!future.length) return;
+  history.push(snapshot());
+  pagesOrder = JSON.parse(future.pop());
+  selectedId = null;
+  updateUndoRedoButtons();
+  await renderThumbs();
+  await renderCurrentPage();
+  renderProps();
+};
+
+/* ============================= TOOLS ============================= */
+document.querySelectorAll(".tool[data-tool]").forEach(btn=>{
+  btn.onclick = ()=>{
+    document.querySelectorAll(".tool[data-tool]").forEach(b=>b.classList.remove("active"));
+    btn.classList.add("active");
+    currentTool = btn.dataset.tool;
+    selectedId = null;
+    renderProps();
+    redrawAnnoCanvas();
+    if(currentTool === "image"){
+      $("#hiddenimage").click();
+    }
+  };
+});
+$("#hiddenimage").onchange = (e)=>{
+  const f = e.target.files[0];
+  if(!f) return;
+  const reader = new FileReader();
+  reader.onload = ()=>{ pendingImageDataUrl = reader.result; showToast("Click on the page to place the image."); };
+  reader.readAsDataURL(f);
+  e.target.value = "";
+};
+
+window.addEventListener("keydown",(e)=>{
+  if(document.activeElement && (document.activeElement.tagName === "TEXTAREA" || document.activeElement.tagName === "INPUT")) return;
+  const map = { v:"select", t:"text", p:"draw", h:"highlight", r:"rect", i:"image" };
+  if(map[e.key.toLowerCase()]){
+    document.querySelector(`.tool[data-tool="${map[e.key.toLowerCase()]}"]`)?.click();
+  }
+  if((e.key === "Delete" || e.key === "Backspace") && selectedId){
+    e.preventDefault();
+    deleteSelected();
+  }
+  if((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z"){
+    e.preventDefault();
+    if(e.shiftKey) $("#redo-btn").click(); else $("#undo-btn").click();
+  }
+});
+$("#delete-anno").onclick = deleteSelected;
+function deleteSelected(){
+  if(!selectedId) return;
+  const page = pagesOrder[currentIndex];
+  const idx = page.annotations.findIndex(a=>a.id===selectedId);
+  if(idx>-1){
+    pushHistory();
+    page.annotations.splice(idx,1);
+    selectedId = null;
+    redrawAnnoCanvas();
+    renderProps();
+  }
+}
+
+/* ============================= ZOOM ============================= */
+$("#zoom-in").onclick = ()=>{ scale = Math.min(3, scale+0.15); renderCurrentPage(); };
+$("#zoom-out").onclick = ()=>{ scale = Math.max(0.5, scale-0.15); renderCurrentPage(); };
+
+/* ============================= THUMBNAILS ============================= */
+async function renderThumbs(){
+  thumbsList.innerHTML = "";
+  for(let i=0;i<pagesOrder.length;i++){
+    const p = pagesOrder[i];
+    const wrap = document.createElement("div");
+    wrap.className = "thumb" + (i===currentIndex ? " active":"");
+    wrap.dataset.index = i;
+
+    const canvasWrap = document.createElement("div");
+    canvasWrap.className = "thumb-canvas-wrap";
+    const canvas = document.createElement("canvas");
+    const tw = 120, th = Math.round(tw * (p.h/p.w));
+    canvas.width = tw; canvas.height = th;
+    canvasWrap.appendChild(canvas);
+
+    if(p.kind === "orig"){
+      const page = await pdfDoc.getPage(p.num);
+      const vp = page.getViewport({ scale: tw/p.w });
+      canvas.width = vp.width; canvas.height = vp.height;
+      await page.render({ canvasContext: canvas.getContext("2d"), viewport: vp }).promise;
+    } else {
+      const ctx = canvas.getContext("2d");
+      ctx.fillStyle = "#fff"; ctx.fillRect(0,0,canvas.width,canvas.height);
+      ctx.strokeStyle = "#d7d3c7"; ctx.strokeRect(0.5,0.5,canvas.width-1,canvas.height-1);
+    }
+
+    const meta = document.createElement("div");
+    meta.className = "thumb-meta";
+    meta.innerHTML = `<span class="thumb-num">${i+1}</span>`;
+    const actions = document.createElement("div");
+    actions.className = "thumb-actions";
+    actions.innerHTML = `
+      <button data-act="up" title="Move up"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19V5M5 12l7-7 7 7"/></svg></button>
+      <button data-act="down" title="Move down"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M19 12l-7 7-7-7"/></svg></button>
+      <button data-act="del" title="Delete page"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2m2 0-1 13a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1L6 7"/></svg></button>
+    `;
+    meta.appendChild(actions);
+    wrap.appendChild(canvasWrap);
+    wrap.appendChild(meta);
+    thumbsList.appendChild(wrap);
+
+    canvasWrap.onclick = ()=>{ currentIndex = i; selectedId=null; renderThumbs(); renderCurrentPage(); renderProps(); };
+    actions.querySelector('[data-act="up"]').onclick = (e)=>{ e.stopPropagation(); movePage(i,-1); };
+    actions.querySelector('[data-act="down"]').onclick = (e)=>{ e.stopPropagation(); movePage(i,1); };
+    actions.querySelector('[data-act="del"]').onclick = (e)=>{ e.stopPropagation(); deletePage(i); };
+  }
+}
+function movePage(i, dir){
+  const j = i+dir;
+  if(j<0 || j>=pagesOrder.length) return;
+  pushHistory();
+  [pagesOrder[i], pagesOrder[j]] = [pagesOrder[j], pagesOrder[i]];
+  if(currentIndex===i) currentIndex=j; else if(currentIndex===j) currentIndex=i;
+  renderThumbs(); renderCurrentPage();
+}
+function deletePage(i){
+  if(pagesOrder.length<=1){ showToast("Can't delete the only page."); return; }
+  pushHistory();
+  pagesOrder.splice(i,1);
+  if(currentIndex>=pagesOrder.length) currentIndex = pagesOrder.length-1;
+  selectedId = null;
+  renderThumbs(); renderCurrentPage(); renderProps();
+}
+$("#addpage-btn").onclick = ()=>{
+  pushHistory();
+  const ref = pagesOrder[currentIndex] || {w:612,h:792};
+  const blank = { id:"p"+(idCounter++), kind:"blank", w: ref.w||612, h: ref.h||792, annotations:[] };
+  pagesOrder.splice(currentIndex+1, 0, blank);
+  currentIndex = currentIndex+1;
+  renderThumbs(); renderCurrentPage();
+};
+
+/* ============================= PAGE RENDER ============================= */
+async function renderCurrentPage(){
+  if(!pagesOrder.length) return;
+  const p = pagesOrder[currentIndex];
+
+  stage.innerHTML = "";
+  const pagewrap = document.createElement("div");
+  pagewrap.id = "pagewrap";
+  const baseCanvas = document.createElement("canvas");
+  baseCanvas.id = "base-canvas";
+  const annoCanvas = document.createElement("canvas");
+  annoCanvas.id = "anno-canvas";
+  pagewrap.appendChild(baseCanvas);
+  pagewrap.appendChild(annoCanvas);
+  stage.appendChild(pagewrap);
+
+  const pxW = p.w * scale, pxH = p.h * scale;
+  baseCanvas.width = pxW; baseCanvas.height = pxH;
+  annoCanvas.width = pxW; annoCanvas.height = pxH;
+  baseCanvas.style.width = annoCanvas.style.width = pxW+"px";
+  baseCanvas.style.height = annoCanvas.style.height = pxH+"px";
+  pagewrap.style.width = pxW+"px";
+  pagewrap.style.height = pxH+"px";
+
+  if(p.kind === "orig"){
+    const page = await pdfDoc.getPage(p.num);
+    const vp = page.getViewport({ scale });
+    await page.render({ canvasContext: baseCanvas.getContext("2d"), viewport: vp }).promise;
+  } else {
+    const ctx = baseCanvas.getContext("2d");
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0,0,pxW,pxH);
+  }
+
+  zoomLabel.textContent = Math.round(scale/1.3*100)+"%";
+  attachCanvasInteraction(annoCanvas, p);
+  redrawAnnoCanvas();
+}
+
+function redrawAnnoCanvas(){
+  const canvas = document.getElementById("anno-canvas");
+  if(!canvas) return;
+  const p = pagesOrder[currentIndex];
+  const ctx = canvas.getContext("2d");
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  p.annotations.forEach(a=>drawAnnotation(ctx, a, scale, a.id===selectedId));
+}
+
+function drawAnnotation(ctx, a, s, selected){
+  ctx.save();
+  if(a.type === "text"){
+    ctx.font = `${a.fontSize*s}px 'Inter', sans-serif`;
+    ctx.fillStyle = a.color;
+    ctx.textBaseline = "top";
+    const lines = (a.text||"").split("\n");
+    lines.forEach((line,i)=> ctx.fillText(line, a.x*s, a.y*s + i*a.fontSize*s*1.25));
+  } else if(a.type === "draw"){
+    ctx.strokeStyle = a.color;
+    ctx.lineWidth = a.strokeWidth*s;
+    ctx.lineJoin = "round"; ctx.lineCap = "round";
+    ctx.beginPath();
+    a.points.forEach((pt,i)=>{
+      const X=(a.x+pt.x)*s, Y=(a.y+pt.y)*s;
+      if(i===0) ctx.moveTo(X,Y); else ctx.lineTo(X,Y);
+    });
+    ctx.stroke();
+  } else if(a.type === "highlight"){
+    ctx.fillStyle = a.color;
+    ctx.globalAlpha = 0.38;
+    ctx.fillRect(a.x*s, a.y*s, a.w*s, a.h*s);
+  } else if(a.type === "rect"){
+    ctx.strokeStyle = a.color;
+    ctx.lineWidth = a.strokeWidth*s;
+    ctx.strokeRect(a.x*s, a.y*s, a.w*s, a.h*s);
+  } else if(a.type === "image" && a.dataUrl){
+    if(!a._img){
+      a._img = new Image();
+      a._img.src = a.dataUrl;
+      a._img.onload = ()=>redrawAnnoCanvas();
+    } else if(a._img.complete){
+      ctx.drawImage(a._img, a.x*s, a.y*s, a.w*s, a.h*s);
+    }
+  }
+  if(selected){
+    const bb = annoBBox(a);
+    ctx.strokeStyle = "#c8362c";
+    ctx.lineWidth = 1.2;
+    ctx.setLineDash([4,3]);
+    ctx.strokeRect(bb.x*s-4, bb.y*s-4, bb.w*s+8, bb.h*s+8);
+    ctx.setLineDash([]);
+  }
+  ctx.restore();
+}
+
+function annoBBox(a){
+  if(a.type==="text"){
+    const lines=(a.text||"").split("\n");
+    const w = Math.max(...lines.map(l=>l.length))*a.fontSize*0.55 + 4;
+    const h = lines.length*a.fontSize*1.25;
+    return {x:a.x,y:a.y,w,h};
+  }
+  if(a.type==="draw"){
+    const xs=a.points.map(p=>p.x), ys=a.points.map(p=>p.y);
+    const minx=Math.min(...xs), maxx=Math.max(...xs), miny=Math.min(...ys), maxy=Math.max(...ys);
+    return {x:a.x+minx, y:a.y+miny, w:(maxx-minx)||4, h:(maxy-miny)||4};
+  }
+  return {x:a.x,y:a.y,w:a.w,h:a.h};
+}
+function hitTest(page, ptX, ptY){
+  for(let i=page.annotations.length-1;i>=0;i--){
+    const a = page.annotations[i];
+    const bb = annoBBox(a);
+    if(ptX>=bb.x-4 && ptX<=bb.x+bb.w+4 && ptY>=bb.y-4 && ptY<=bb.y+bb.h+4) return a;
+  }
+  return null;
+}
+
+/* ============================= CANVAS INTERACTION ============================= */
+function attachCanvasInteraction(canvas, page){
+  canvas.onpointerdown = (e)=>{
+    const rect = canvas.getBoundingClientRect();
+    const ptX = (e.clientX-rect.left)/scale;
+    const ptY = (e.clientY-rect.top)/scale;
+
+    if(currentTool === "select"){
+      const hit = hitTest(page, ptX, ptY);
+      selectedId = hit ? hit.id : null;
+      renderProps();
+      redrawAnnoCanvas();
+      if(hit){
+        pushHistory();
+        interaction = { mode:"drag", anno:hit, startX:ptX, startY:ptY, origX:hit.x, origY:hit.y };
+        canvas.setPointerCapture(e.pointerId);
+      }
+      return;
+    }
+    if(currentTool === "text"){
+      const a = { id:"a"+(idCounter++), type:"text", x:ptX, y:ptY, text:"", fontSize:16, color:COLORS[1] };
+      page.annotations.push(a);
+      pushHistory();
+      selectedId = a.id;
+      redrawAnnoCanvas();
+      openTextEditor(canvas, page, a);
+      return;
+    }
+    if(currentTool === "draw"){
+      const a = { id:"a"+(idCounter++), type:"draw", x:ptX, y:ptY, points:[{x:0,y:0}], color:COLORS[0], strokeWidth:2.5 };
+      page.annotations.push(a);
+      interaction = { mode:"draw", anno:a };
+      canvas.setPointerCapture(e.pointerId);
+      return;
+    }
+    if(currentTool === "highlight" || currentTool === "rect"){
+      const a = { id:"a"+(idCounter++), type:currentTool, x:ptX, y:ptY, w:0, h:0,
+                  color: currentTool==="highlight" ? "#f5d90a" : COLORS[0], strokeWidth:2 };
+      page.annotations.push(a);
+      interaction = { mode:"size", anno:a, startX:ptX, startY:ptY };
+      canvas.setPointerCapture(e.pointerId);
+      return;
+    }
+    if(currentTool === "image"){
+      if(!pendingImageDataUrl){ showToast("Choose an image first."); return; }
+      const img = new Image();
+      img.onload = ()=>{
+        const maxW = page.w*0.5;
+        const ratio = img.width/img.height;
+        const w = Math.min(maxW, img.width);
+        const h = w/ratio;
+        const a = { id:"a"+(idCounter++), type:"image", x:ptX-w/2, y:ptY-h/2, w, h, dataUrl: pendingImageDataUrl };
+        page.annotations.push(a);
+        pushHistory();
+        selectedId = a.id;
+        pendingImageDataUrl = null;
+        redrawAnnoCanvas();
+        renderProps();
+        document.querySelector('.tool[data-tool="select"]').click();
+      };
+      img.src = pendingImageDataUrl;
+      return;
+    }
+  };
+
+  canvas.onpointermove = (e)=>{
+    if(!interaction) return;
+    const rect = canvas.getBoundingClientRect();
+    const ptX = (e.clientX-rect.left)/scale;
+    const ptY = (e.clientY-rect.top)/scale;
+    if(interaction.mode === "drag"){
+      const a = interaction.anno;
+      a.x = interaction.origX + (ptX-interaction.startX);
+      a.y = interaction.origY + (ptY-interaction.startY);
+      redrawAnnoCanvas();
+    } else if(interaction.mode === "draw"){
+      const a = interaction.anno;
+      a.points.push({ x: ptX-a.x, y: ptY-a.y });
+      redrawAnnoCanvas();
+    } else if(interaction.mode === "size"){
+      const a = interaction.anno;
+      a.w = ptX - interaction.startX;
+      a.h = ptY - interaction.startY;
+      redrawAnnoCanvas();
+    }
+  };
+
+  canvas.onpointerup = ()=>{
+    if(interaction && interaction.mode !== "drag"){
+      const a = interaction.anno;
+      if(a.type==="highlight" || a.type==="rect"){
+        if(a.w<0){ a.x+=a.w; a.w=Math.abs(a.w); }
+        if(a.h<0){ a.y+=a.h; a.h=Math.abs(a.h); }
+        if(a.w<2) a.w=60; if(a.h<2) a.h=20;
+      }
+      pushHistory();
+      selectedId = a.id;
+      renderProps();
+      redrawAnnoCanvas();
+    }
+    interaction = null;
+  };
+}
+
+function openTextEditor(canvas, page, a){
+  const wrap = canvas.parentElement;
+  const editor = document.createElement("textarea");
+  editor.id = "text-editor";
+  editor.style.left = (a.x*scale)+"px";
+  editor.style.top = (a.y*scale)+"px";
+  editor.style.width = "260px";
+  editor.style.height = (a.fontSize*scale*1.6)+"px";
+  editor.style.fontSize = (a.fontSize*scale)+"px";
+  editor.style.color = a.color;
+  wrap.appendChild(editor);
+  editor.focus();
+  editor.oninput = ()=>{
+    a.text = editor.value;
+    editor.style.height = "auto";
+    editor.style.height = editor.scrollHeight+"px";
+    redrawAnnoCanvas();
+  };
+  editor.onblur = ()=>{
+    editor.remove();
+    if(!a.text.trim()){
+      const idx = page.annotations.findIndex(x=>x.id===a.id);
+      if(idx>-1) page.annotations.splice(idx,1);
+      selectedId = null;
+    }
+    redrawAnnoCanvas();
+    renderProps();
+    document.querySelector('.tool[data-tool="select"]').click();
+  };
+}
+
+/* ============================= PROPERTIES PANEL ============================= */
+function renderProps(){
+  const page = pagesOrder[currentIndex];
+  const a = page && page.annotations.find(x=>x.id===selectedId);
+  if(!a){
+    propsPanel.innerHTML = `<div class="empty-hint" id="props-empty">Select an annotation to edit its properties, or choose a tool from the left rail to start marking up the page.</div>`;
+    return;
+  }
+  let html = `<h3>${a.type} properties</h3>`;
+
+  if(a.type === "text"){
+    html += `
+      <div class="field"><label>Text</label><textarea id="p-text">${escapeHtml(a.text||"")}</textarea></div>
+      <div class="field"><label>Font size</label><input type="number" id="p-fontsize" value="${a.fontSize}" min="6" max="120"></div>
+      <div class="field"><label>Color</label><div class="swatches" id="p-color"></div></div>
+    `;
+  } else if(a.type === "draw"){
+    html += `
+      <div class="field"><label>Stroke width</label><input type="number" id="p-stroke" value="${a.strokeWidth}" min="0.5" max="20" step="0.5"></div>
+      <div class="field"><label>Color</label><div class="swatches" id="p-color"></div></div>
+    `;
+  } else if(a.type === "rect"){
+    html += `
+      <div class="field"><label>Position &amp; size</label>
+        <div class="row2">
+          <input type="number" id="p-x" value="${Math.round(a.x)}">
+          <input type="number" id="p-y" value="${Math.round(a.y)}">
+          <input type="number" id="p-w" value="${Math.round(a.w)}">
+          <input type="number" id="p-h" value="${Math.round(a.h)}">
+        </div>
+      </div>
+      <div class="field"><label>Stroke width</label><input type="number" id="p-stroke" value="${a.strokeWidth}" min="0.5" max="20" step="0.5"></div>
+      <div class="field"><label>Color</label><div class="swatches" id="p-color"></div></div>
+    `;
+  } else if(a.type === "highlight"){
+    html += `
+      <div class="field"><label>Position &amp; size</label>
+        <div class="row2">
+          <input type="number" id="p-x" value="${Math.round(a.x)}">
+          <input type="number" id="p-y" value="${Math.round(a.y)}">
+          <input type="number" id="p-w" value="${Math.round(a.w)}">
+          <input type="number" id="p-h" value="${Math.round(a.h)}">
+        </div>
+      </div>
+      <div class="field"><label>Color</label><div class="swatches" id="p-color"></div></div>
+    `;
+  } else if(a.type === "image"){
+    html += `
+      <div class="field"><label>Position &amp; size</label>
+        <div class="row2">
+          <input type="number" id="p-x" value="${Math.round(a.x)}">
+          <input type="number" id="p-y" value="${Math.round(a.y)}">
+          <input type="number" id="p-w" value="${Math.round(a.w)}">
+          <input type="number" id="p-h" value="${Math.round(a.h)}">
+        </div>
+      </div>
+    `;
+  }
+  html += `<button class="del-btn" id="p-delete">Delete annotation</button>`;
+  propsPanel.innerHTML = html;
+
+  const colorHost = $("#p-color");
+  if(colorHost){
+    COLORS.forEach(c=>{
+      const sw = document.createElement("div");
+      sw.className = "swatch"+(a.color===c?" active":"");
+      sw.style.background = c;
+      sw.onclick = ()=>{ pushHistory(); a.color=c; redrawAnnoCanvas(); renderProps(); };
+      colorHost.appendChild(sw);
+    });
+  }
+  bindNum("p-fontsize", v=>a.fontSize=v);
+  bindNum("p-stroke", v=>a.strokeWidth=v);
+  bindNum("p-x", v=>a.x=v);
+  bindNum("p-y", v=>a.y=v);
+  bindNum("p-w", v=>a.w=v);
+  bindNum("p-h", v=>a.h=v);
+  const textArea = $("#p-text");
+  if(textArea) textArea.oninput = ()=>{ a.text = textArea.value; redrawAnnoCanvas(); };
+
+  $("#p-delete").onclick = deleteSelected;
+
+  function bindNum(id, setter){
+    const el = document.getElementById(id);
+    if(!el) return;
+    el.onchange = ()=>{ pushHistory(); setter(parseFloat(el.value)||0); redrawAnnoCanvas(); };
+  }
+}
+function escapeHtml(s){ return s.replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+/* ============================= EXPORT ============================= */
+$("#export-btn").onclick = async ()=>{
+  if(!sourceBytes || !pagesOrder.length) return;
+  $("#export-btn").disabled = true;
+  $("#export-btn").textContent = "Exporting…";
+  try{
+    const { PDFDocument } = PDFLib;
+    const srcDoc = await PDFDocument.load(sourceBytes.slice(0));
+    const outDoc = await PDFDocument.create();
+
+    for(const p of pagesOrder){
+      let outPage;
+      if(p.kind === "orig"){
+        const [copied] = await outDoc.copyPages(srcDoc, [p.num-1]);
+        outDoc.addPage(copied);
+        outPage = copied;
+      } else {
+        outPage = outDoc.addPage([p.w, p.h]);
+      }
+      if(p.annotations.length){
+        const rasterDataUrl = await rasterizeAnnotations(p);
+        const pngImage = await outDoc.embedPng(rasterDataUrl);
+        const { width, height } = outPage.getSize();
+        outPage.drawImage(pngImage, { x:0, y:0, width, height });
+      }
+    }
+
+    const bytes = await outDoc.save();
+    const blob = new Blob([bytes], { type:"application/pdf" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = originalFilename.replace(/\.pdf$/i,"") + "-edited.pdf";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    showToast("Exported — check your downloads.");
+  }catch(err){
+    console.error(err);
+    showToast("Export failed: "+err.message);
+  }
+  $("#export-btn").disabled = false;
+  $("#export-btn").textContent = "Export PDF";
+};
+
+async function rasterizeAnnotations(p){
+  const rasterScale = 2; // for crisp output regardless of on-screen zoom
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.ceil(p.w*rasterScale);
+  canvas.height = Math.ceil(p.h*rasterScale);
+  const ctx = canvas.getContext("2d");
+  for(const a of p.annotations){
+    await drawAnnotationAsync(ctx, a, rasterScale);
+  }
+  return canvas.toDataURL("image/png");
+}
+function drawAnnotationAsync(ctx, a, s){
+  return new Promise(resolve=>{
+    if(a.type === "image" && a.dataUrl){
+      const img = new Image();
+      img.onload = ()=>{ ctx.drawImage(img, a.x*s, a.y*s, a.w*s, a.h*s); resolve(); };
+      img.src = a.dataUrl;
+    } else {
+      drawAnnotation(ctx, a, s, false);
+      resolve();
+    }
+  });
+}
+
+/* ============================= RESIZE ============================= */
+window.addEventListener("resize", ()=>{ if(pagesOrder.length) renderCurrentPage(); });
+</script>
+</body>
+</html>
