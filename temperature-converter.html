@@ -1,0 +1,573 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Thermo — Temperature Converter</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg: #eef1f4;
+    --panel: #ffffff;
+    --ink: #17202b;
+    --ink-soft: #5c6b7a;
+    --ink-faint: #93a1ae;
+    --line: #dde3e8;
+    --line-strong: #c4cdd6;
+    --cold: #2e6f9e;
+    --cold-deep: #1d4d73;
+    --hot: #d1512f;
+    --hot-deep: #a53c1f;
+    --focus: #17202b;
+    --radius: 14px;
+    --shadow: 0 1px 2px rgba(23,32,43,0.04), 0 12px 32px -12px rgba(23,32,43,0.14);
+  }
+
+  *{ box-sizing: border-box; }
+
+  html, body{
+    margin:0; padding:0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: 'IBM Plex Sans', system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  body{
+    min-height: 100vh;
+    display:flex;
+    align-items:flex-start;
+    justify-content:center;
+    padding: 64px 24px 80px;
+    background-image:
+      radial-gradient(circle at 1px 1px, rgba(23,32,43,0.05) 1px, transparent 0);
+    background-size: 28px 28px;
+  }
+
+  .page{
+    width: 100%;
+    max-width: 960px;
+  }
+
+  /* ---------- Header ---------- */
+  header.top{
+    display:flex;
+    align-items:flex-end;
+    justify-content:space-between;
+    margin-bottom: 36px;
+    gap: 24px;
+    flex-wrap: wrap;
+  }
+
+  .eyebrow{
+    font-family:'IBM Plex Mono', monospace;
+    font-size: 12px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+    margin: 0 0 10px;
+    display:flex;
+    align-items:center;
+    gap: 10px;
+  }
+  .eyebrow::before{
+    content:"";
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--cold), var(--hot));
+    display:inline-block;
+  }
+
+  h1{
+    font-family:'IBM Plex Mono', monospace;
+    font-weight: 700;
+    font-size: clamp(28px, 4vw, 40px);
+    letter-spacing: -0.02em;
+    margin: 0;
+    line-height: 1.05;
+  }
+
+  .top-meta{
+    font-family:'IBM Plex Mono', monospace;
+    font-size: 12px;
+    color: var(--ink-faint);
+    text-align: right;
+    line-height: 1.6;
+  }
+  .top-meta span{ color: var(--ink-soft); }
+
+  /* ---------- Layout ---------- */
+  .console{
+    display: grid;
+    grid-template-columns: 220px 1fr;
+    gap: 0;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    overflow: hidden;
+  }
+
+  @media (max-width: 720px){
+    .console{ grid-template-columns: 1fr; }
+    .gauge-col{ border-right: none !important; border-bottom: 1px solid var(--line); }
+  }
+
+  /* ---------- Gauge column (signature element) ---------- */
+  .gauge-col{
+    padding: 32px 24px;
+    border-right: 1px solid var(--line);
+    display:flex;
+    flex-direction: column;
+    align-items: center;
+    background:
+      linear-gradient(180deg, rgba(23,32,43,0.015), transparent 40%);
+  }
+
+  .gauge-label{
+    font-family:'IBM Plex Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    margin-bottom: 18px;
+  }
+
+  .gauge-wrap{
+    position: relative;
+    width: 88px;
+    height: 380px;
+    display:flex;
+    justify-content:center;
+  }
+
+  .gauge-track{
+    position: relative;
+    width: 14px;
+    height: 100%;
+    background: #e4e9ed;
+    border-radius: 8px;
+    border: 1px solid var(--line-strong);
+    overflow: hidden;
+  }
+
+  .gauge-fill{
+    position: absolute;
+    bottom: 0; left: 0; width: 100%;
+    border-radius: 8px 8px 0 0;
+    transition: height 0.5s cubic-bezier(.4,0,.2,1), background 0.5s ease;
+  }
+
+  .gauge-bulb{
+    position: absolute;
+    bottom: -13px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 34px; height: 34px;
+    border-radius: 50%;
+    border: 1px solid var(--line-strong);
+    background: #e4e9ed;
+    transition: background 0.5s ease;
+  }
+
+  .gauge-ticks{
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    pointer-events: none;
+  }
+  .tick{
+    position: absolute;
+    left: 26px;
+    display:flex;
+    align-items:center;
+    gap: 6px;
+    transform: translateY(-50%);
+    white-space: nowrap;
+  }
+  .tick .line{
+    width: 10px; height: 1px;
+    background: var(--line-strong);
+  }
+  .tick .txt{
+    font-family:'IBM Plex Mono', monospace;
+    font-size: 10px;
+    color: var(--ink-faint);
+  }
+
+  .gauge-readout{
+    margin-top: 26px;
+    text-align: center;
+  }
+  .gauge-readout .num{
+    font-family:'IBM Plex Mono', monospace;
+    font-weight: 700;
+    font-size: 26px;
+    letter-spacing: -0.02em;
+  }
+  .gauge-readout .lbl{
+    font-family:'IBM Plex Mono', monospace;
+    font-size: 11px;
+    color: var(--ink-faint);
+    margin-top: 2px;
+  }
+
+  /* ---------- Control column ---------- */
+  .control-col{
+    padding: 32px 32px 28px;
+    display:flex;
+    flex-direction: column;
+    gap: 26px;
+  }
+
+  .unit-tabs{
+    display:flex;
+    gap: 6px;
+    background: var(--bg);
+    padding: 4px;
+    border-radius: 10px;
+    border: 1px solid var(--line);
+    width: fit-content;
+  }
+  .unit-tab{
+    font-family:'IBM Plex Mono', monospace;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 8px 16px;
+    border-radius: 7px;
+    border: none;
+    background: transparent;
+    color: var(--ink-soft);
+    cursor: pointer;
+    transition: background 0.18s ease, color 0.18s ease;
+  }
+  .unit-tab:hover{ color: var(--ink); }
+  .unit-tab.active{
+    background: var(--ink);
+    color: #fff;
+  }
+  .unit-tab:focus-visible{
+    outline: 2px solid var(--focus);
+    outline-offset: 2px;
+  }
+
+  .input-row{
+    display:flex;
+    align-items: baseline;
+    border-bottom: 2px solid var(--line-strong);
+    padding-bottom: 12px;
+    transition: border-color 0.18s ease;
+  }
+  .input-row:focus-within{
+    border-color: var(--ink);
+  }
+
+  .input-row input{
+    flex: 1;
+    font-family:'IBM Plex Mono', monospace;
+    font-weight: 700;
+    font-size: clamp(40px, 7vw, 56px);
+    letter-spacing: -0.02em;
+    border: none;
+    outline: none;
+    background: transparent;
+    color: var(--ink);
+    width: 100%;
+    min-width: 0;
+    padding: 0;
+  }
+  .input-row input::placeholder{ color: var(--ink-faint); }
+  .input-row .unit-suffix{
+    font-family:'IBM Plex Mono', monospace;
+    font-size: 22px;
+    color: var(--ink-faint);
+    padding-left: 6px;
+  }
+
+  .helper{
+    font-size: 12.5px;
+    color: var(--ink-faint);
+    font-family: 'IBM Plex Mono', monospace;
+    min-height: 16px;
+  }
+
+  .results{
+    display:grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+    margin-top: 4px;
+  }
+
+  .result-card{
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 14px 16px;
+    background: var(--bg);
+  }
+  .result-card .rk{
+    font-family:'IBM Plex Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    display:flex;
+    justify-content: space-between;
+  }
+  .result-card .rv{
+    font-family:'IBM Plex Mono', monospace;
+    font-weight: 600;
+    font-size: 24px;
+    margin-top: 6px;
+    color: var(--ink);
+  }
+
+  /* ---------- Reference strip ---------- */
+  .reference{
+    border-top: 1px solid var(--line);
+    padding: 18px 32px;
+    display:flex;
+    gap: 28px;
+    flex-wrap: wrap;
+    background: var(--bg);
+  }
+  .ref-item{
+    font-family:'IBM Plex Mono', monospace;
+    font-size: 11.5px;
+    color: var(--ink-soft);
+    display:flex;
+    align-items:center;
+    gap: 8px;
+  }
+  .ref-item .dot{
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--ink-faint);
+  }
+  .ref-item b{ color: var(--ink); font-weight: 600; }
+
+  footer.credit{
+    text-align:center;
+    margin-top: 28px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11.5px;
+    color: var(--ink-faint);
+  }
+
+  @media (prefers-reduced-motion: reduce){
+    .gauge-fill, .gauge-bulb, .unit-tab{ transition: none !important; }
+  }
+</style>
+</head>
+<body>
+
+<div class="page">
+
+  <header class="top">
+    <div>
+      <p class="eyebrow">Conversion Instrument</p>
+      <h1>Thermo</h1>
+    </div>
+    <div class="top-meta">
+      Scales <span>· Celsius / Fahrenheit / Kelvin</span><br>
+      Precision <span>· 0.01°</span>
+    </div>
+  </header>
+
+  <div class="console">
+
+    <!-- Signature gauge -->
+    <div class="gauge-col">
+      <p class="gauge-label">Reading</p>
+      <div class="gauge-wrap">
+        <div class="gauge-track">
+          <div class="gauge-fill" id="gaugeFill"></div>
+          <div class="gauge-bulb" id="gaugeBulb"></div>
+        </div>
+        <div class="gauge-ticks" id="gaugeTicks"></div>
+      </div>
+      <div class="gauge-readout">
+        <div class="num" id="gaugeNum">21.0°C</div>
+        <div class="lbl">room temperature</div>
+      </div>
+    </div>
+
+    <!-- Controls -->
+    <div class="control-col">
+
+      <div class="unit-tabs" role="tablist" aria-label="Input unit">
+        <button class="unit-tab active" data-unit="C" role="tab" aria-selected="true">°C</button>
+        <button class="unit-tab" data-unit="F" role="tab" aria-selected="false">°F</button>
+        <button class="unit-tab" data-unit="K" role="tab" aria-selected="false">K</button>
+      </div>
+
+      <div>
+        <div class="input-row">
+          <input id="valueInput" type="text" inputmode="decimal" value="21" aria-label="Temperature value">
+          <span class="unit-suffix" id="inputSuffix">°C</span>
+        </div>
+        <p class="helper" id="helperText">Enter a value — conversions update as you type.</p>
+      </div>
+
+      <div class="results" id="resultsGrid"></div>
+
+    </div>
+  </div>
+
+  <div class="reference">
+    <span class="ref-item"><span class="dot"></span>Absolute zero <b>−273.15°C</b></span>
+    <span class="ref-item"><span class="dot"></span>Water freezes <b>0°C</b></span>
+    <span class="ref-item"><span class="dot"></span>Body temperature <b>37°C</b></span>
+    <span class="ref-item"><span class="dot"></span>Water boils <b>100°C</b></span>
+  </div>
+
+  <footer class="credit">Thermo — a clean instrument for one job, done precisely.</footer>
+
+</div>
+
+<script>
+(function(){
+  const SCALE_MIN_C = -50;
+  const SCALE_MAX_C = 120;
+
+  const units = {
+    C: { label: '°C', suffix: '°C', name: 'Celsius' },
+    F: { label: '°F', suffix: '°F', name: 'Fahrenheit' },
+    K: { label: 'K',  suffix: 'K',  name: 'Kelvin' }
+  };
+
+  let currentUnit = 'C';
+
+  const valueInput = document.getElementById('valueInput');
+  const suffixEl = document.getElementById('inputSuffix');
+  const helperText = document.getElementById('helperText');
+  const resultsGrid = document.getElementById('resultsGrid');
+  const gaugeFill = document.getElementById('gaugeFill');
+  const gaugeBulb = document.getElementById('gaugeBulb');
+  const gaugeNum = document.getElementById('gaugeNum');
+  const gaugeTicks = document.getElementById('gaugeTicks');
+  const tabs = document.querySelectorAll('.unit-tab');
+
+  function toCelsius(value, unit){
+    if(unit === 'C') return value;
+    if(unit === 'F') return (value - 32) * 5/9;
+    if(unit === 'K') return value - 273.15;
+  }
+  function fromCelsius(c, unit){
+    if(unit === 'C') return c;
+    if(unit === 'F') return c * 9/5 + 32;
+    if(unit === 'K') return c + 273.15;
+  }
+
+  function fmt(n){
+    if(!isFinite(n)) return '—';
+    const rounded = Math.round(n * 100) / 100;
+    return (Object.is(rounded, -0) ? 0 : rounded).toString();
+  }
+
+  function describe(c){
+    if(c <= -273.15) return 'absolute zero';
+    if(c < -40) return 'colder than a chest freezer';
+    if(c < 0) return 'below freezing';
+    if(c < 15) return 'cold';
+    if(c < 22) return 'cool room temperature';
+    if(c < 28) return 'room temperature';
+    if(c < 37) return 'warm';
+    if(c < 40) return 'body temperature';
+    if(c < 60) return 'hot';
+    if(c < 100) return 'very hot';
+    if(c === 100) return 'water boils';
+    return 'above boiling';
+  }
+
+  function gaugeColor(c){
+    // map -50..120 to a cold->hot blend
+    const t = Math.max(0, Math.min(1, (c - SCALE_MIN_C) / (SCALE_MAX_C - SCALE_MIN_C)));
+    const cold = [46,111,158];
+    const hot = [209,81,47];
+    const mix = cold.map((v,i) => Math.round(v + (hot[i]-v)*t));
+    return `rgb(${mix[0]}, ${mix[1]}, ${mix[2]})`;
+  }
+
+  function renderTicks(){
+    const refs = [
+      { c: -50, label: '−50°' },
+      { c: 0,   label: '0°' },
+      { c: 37,  label: '37°' },
+      { c: 100, label: '100°' },
+      { c: 120, label: '120°' }
+    ];
+    gaugeTicks.innerHTML = '';
+    refs.forEach(r => {
+      const t = (r.c - SCALE_MIN_C) / (SCALE_MAX_C - SCALE_MIN_C);
+      const topPct = (1 - t) * 100;
+      const el = document.createElement('div');
+      el.className = 'tick';
+      el.style.top = topPct + '%';
+      el.innerHTML = `<span class="line"></span><span class="txt">${r.label}</span>`;
+      gaugeTicks.appendChild(el);
+    });
+  }
+
+  function update(){
+    const raw = valueInput.value.replace(',', '.').trim();
+    const value = parseFloat(raw);
+
+    if(raw === '' || isNaN(value)){
+      helperText.textContent = 'Enter a numeric value to convert.';
+      resultsGrid.innerHTML = '';
+      Object.keys(units).forEach(u => {
+        if(u === currentUnit) return;
+        const card = document.createElement('div');
+        card.className = 'result-card';
+        card.innerHTML = `<div class="rk">${units[u].name}<span>${units[u].suffix}</span></div><div class="rv">—</div>`;
+        resultsGrid.appendChild(card);
+      });
+      return;
+    }
+
+    const c = toCelsius(value, currentUnit);
+    const clampedC = Math.max(SCALE_MIN_C - 10, c);
+
+    // Gauge
+    const t = Math.max(0, Math.min(1, (clampedC - SCALE_MIN_C) / (SCALE_MAX_C - SCALE_MIN_C)));
+    gaugeFill.style.height = (t * 100) + '%';
+    const color = gaugeColor(clampedC);
+    gaugeFill.style.background = `linear-gradient(180deg, ${color}, ${color})`;
+    gaugeBulb.style.background = color;
+    gaugeNum.textContent = fmt(fromCelsius(c, 'C')) + '°C';
+
+    helperText.textContent = 'That reads as ' + describe(c) + '.';
+
+    resultsGrid.innerHTML = '';
+    Object.keys(units).forEach(u => {
+      if(u === currentUnit) return;
+      const out = fromCelsius(c, u);
+      const card = document.createElement('div');
+      card.className = 'result-card';
+      card.innerHTML = `<div class="rk">${units[u].name}<span>${units[u].suffix}</span></div><div class="rv">${fmt(out)}${units[u].suffix === 'K' ? ' K' : '°'}</div>`;
+      resultsGrid.appendChild(card);
+    });
+  }
+
+  tabs.forEach(tab => {
+    tab.addEventListener('click', () => {
+      tabs.forEach(t => { t.classList.remove('active'); t.setAttribute('aria-selected','false'); });
+      tab.classList.add('active');
+      tab.setAttribute('aria-selected','true');
+      currentUnit = tab.dataset.unit;
+      suffixEl.textContent = units[currentUnit].suffix;
+      update();
+    });
+  });
+
+  valueInput.addEventListener('input', update);
+
+  renderTicks();
+  update();
+})();
+</script>
+
+</body>
+</html>
